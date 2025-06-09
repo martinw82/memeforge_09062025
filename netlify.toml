@@ -1,0 +1,110 @@
+# Netlify configuration file
+
+[build]
+  publish = "dist"
+  command = "npm run build"
+
+[build.environment]
+  NODE_VERSION = "18"
+  NPM_CONFIG_PRODUCTION = "false"
+
+# Security headers
+[[headers]]
+  for = "/*"
+  [headers.values]
+    # Content Security Policy
+    Content-Security-Policy = '''
+      default-src 'self';
+      script-src 'self' 'unsafe-inline' https://js.stripe.com https://checkout.stripe.com https://netlify-ai-caption-backend.netlify.app;
+      style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+      img-src 'self' data: blob: https://images.pexels.com https://ipfs.io https://gateway.pinata.cloud;
+      connect-src 'self' https://*.supabase.co https://api.stripe.com https://netlify-ai-caption-backend.netlify.app https://mfimgshr.netlify.app https://*.algonode.cloud https://bridge.walletconnect.org;
+      font-src 'self' https://fonts.gstatic.com;
+      frame-src https://js.stripe.com https://checkout.stripe.com;
+      report-uri /csp-report;
+    '''
+    
+    # Security headers
+    X-Frame-Options = "DENY"
+    X-Content-Type-Options = "nosniff"
+    X-XSS-Protection = "1; mode=block"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Permissions-Policy = "geolocation=(), microphone=(), camera=()"
+    
+    # HSTS for HTTPS
+    Strict-Transport-Security = "max-age=31536000; includeSubDomains; preload"
+    
+    # Cache control
+    Cache-Control = "public, max-age=31536000, immutable"
+
+# Cache static assets
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+[[headers]]
+  for = "*.js"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+[[headers]]
+  for = "*.css"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+# API routes
+[[headers]]
+  for = "/api/*"
+  [headers.values]
+    Cache-Control = "no-cache, no-store, must-revalidate"
+
+# SPA fallback
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+# Health check endpoint
+[[redirects]]
+  from = "/health"
+  to = "/.netlify/functions/health"
+  status = 200
+
+# CSP report endpoint
+[[redirects]]
+  from = "/csp-report"
+  to = "/.netlify/functions/csp-report"
+  status = 200
+
+# Environment-specific settings
+[context.production.environment]
+  VITE_APP_ENV = "production"
+  VITE_ANALYTICS_ENABLED = "true"
+  VITE_ENABLE_ERROR_TRACKING = "true"
+
+[context.deploy-preview.environment]
+  VITE_APP_ENV = "preview"
+  VITE_ANALYTICS_ENABLED = "false"
+
+[context.branch-deploy.environment]
+  VITE_APP_ENV = "staging"
+  VITE_ANALYTICS_ENABLED = "true"
+
+# Build optimization
+[build.processing]
+  skip_processing = false
+
+[build.processing.css]
+  bundle = true
+  minify = true
+
+[build.processing.js]
+  bundle = true
+  minify = true
+
+[build.processing.html]
+  pretty_urls = true
+
+[build.processing.images]
+  compress = true

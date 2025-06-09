@@ -1,0 +1,104 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Ensure proper touch handling for mobile devices */
+@layer base {
+  /* Better touch targets for mobile */
+  button, input, select, textarea {
+    @apply min-h-[44px] touch-manipulation;
+  }
+
+  /* Smooth scrolling for mobile */
+  html {
+    scroll-behavior: smooth;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  /* Prevent zoom on input focus for iOS */
+  @media screen and (max-width: 767px) {
+    input, select, textarea {
+      font-size: 16px;
+    }
+  }
+
+  /* Custom scrollbar for better mobile experience */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    @apply bg-gray-800 rounded;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-gray-600 rounded hover:bg-gray-500;
+  }
+
+  /* Better focus states for accessibility */
+  *:focus {
+    outline: 2px solid theme('colors.blue.500');
+    outline-offset: 2px;
+  }
+
+  input:focus, textarea:focus, select:focus {
+    outline: none;
+    @apply ring-2 ring-blue-500 ring-offset-2 ring-offset-gray-800;
+  }
+}
+
+/* Custom utility classes for mobile responsiveness */
+@layer utilities {
+  /* Touch-friendly sizing */
+  .touch-target {
+    @apply min-h-[44px] min-w-[44px];
+  }
+
+  /* Prevent text selection on interactive elements */
+  .no-select {
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+  }
+
+  /* Safe area handling for devices with notches */
+  .safe-area-top {
+    padding-top: env(safe-area-inset-top);
+  }
+
+  .safe-area-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  /* Custom range slider styles for better mobile UX */
+  input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    @apply h-2 bg-gray-600 rounded-lg cursor-pointer;
+  }
+
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    @apply h-5 w-5 bg-blue-500 rounded-full cursor-pointer;
+  }
+
+  input[type="range"]::-moz-range-thumb {
+    @apply h-5 w-5 bg-blue-500 rounded-full cursor-pointer border-0;
+  }
+}
+
+/* Animation for mobile interactions */
+@keyframes tap-highlight {
+  0% { 
+    background-color: rgba(59, 130, 246, 0.1);
+  }
+  100% { 
+    background-color: transparent;
+  }
+}
+
+.tap-highlight {
+  animation: tap-highlight 150ms ease-out;
+}

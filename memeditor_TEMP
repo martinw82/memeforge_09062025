@@ -1,0 +1,287 @@
+// MemeEditor.tsx - Final version with improved draggable text (throttled), canvas rendering, text settings, and sharing
+
+import React, { useState, useRef, useEffect } from 'react';
+import { useMeme } from '../context/MemeContext';
+import axios from 'axios';
+import { Settings, Download, Sparkles, RefreshCw, ArrowUp, Zap } from 'lucide-react';
+
+interface DraggableText {
+  id: string;
+  text: string;
+  x: number;
+  y: number;
+  type: 'top' | 'bottom' | 'custom';
+  font: string;
+  fontSize: number;
+  color: string;
+  strokeWidth: number;
+  strokeColor: string;
+}
+
+interface DragState {
+  id: string;
+  startX: number;
+  startY: number;
+  initialX: number;
+  initialY: number;
+}
+
+const MAX_IMAGE_WIDTH = 800;
+const MAX_IMAGE_HEIGHT = 800;
+
+const AVAILABLE_FONTS = [
+  { name: 'Impact', value: 'Impact' },
+  { name: 'Comic Sans MS', value: '"Comic Sans MS", cursive' },
+  { name: 'Arial Black', value: '"Arial Black", sans-serif' },
+  { name: 'Verdana Bold', value: 'Verdana, sans-serif' },
+  { name: 'Times New Roman', value: '"Times New Roman", serif' }
+];
+
+const uploadToImgBB = async (imageBase64: string): Promise<string | null> => {
+  try {
+    const response = await axios.post(
+      "https://mfimgshr.netlify.app/.netlify/functions/upload-meme",
+      { imageBase64 }
+    );
+    return response.data.url;
+  } catch (error) {
+    console.error("Image upload failed:", error);
+    return null;
+  }
+};
+
+const MemeEditor: React.FC = () => {
+  const [tone, setTone] = useState("Default");
+  const {
+    memeState,
+    setTopText,
+    setBottomText,
+    generateAiSuggestions,
+    setGeneratedMeme
+  } = useMeme();
+  const {
+    selectedTemplate,
+    topText,
+    bottomText,
+    aiSuggestions,
+    isLoading
+  } = memeState;
+
+  const [showSettings, setShowSettings] = useState(true);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [fontSize, setFontSize] = useState(32);
+  const [textColor, setTextColor] = useState('#ffffff');
+  const [strokeColor, setStrokeColor] = useState('#000000');
+  const [strokeWidth, setStrokeWidth] = useState(2);
+  const [selectedFont, setSelectedFont] = useState(AVAILABLE_FONTS[0].value);
+  const [draggableTexts, setDraggableTexts] = useState<DraggableText[]>([]);
+  const [dragState, setDragState] = useState<DragState | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const animationRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    const newTexts: DraggableText[] = [];
+    if (topText) {
+      newTexts.push({
+        id: 'top',
+        text: topText,
+        x: 50,
+        y: 10,
+        type: 'top',
+        font: selectedFont,
+        fontSize,
+        color: textColor,
+        strokeWidth,
+        strokeColor
+      });
+    }
+    if (bottomText) {
+      newTexts.push({
+        id: 'bottom',
+        text: bottomText,
+        x: 50,
+        y: 90,
+        type: 'bottom',
+        font: selectedFont,
+        fontSize,
+        color: textColor,
+        strokeWidth,
+        strokeColor
+      });
+    }
+    setDraggableTexts(newTexts);
+    generateMeme(newTexts);
+  }, [topText, bottomText, selectedFont, fontSize, textColor, strokeWidth, strokeColor, selectedTemplate]);
+
+  const generateMeme = (texts = draggableTexts) => {
+    if (!selectedTemplate || !canvasRef.current) return;
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      const dimensions = calculateImageDimensions(img.width, img.height);
+      canvas.width = dimensions.width;
+      canvas.height = dimensions.height;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      texts.forEach(text => {
+        const x = (text.x / 100) * canvas.width;
+        const y = (text.y / 100) * canvas.height;
+        ctx.font = `bold ${text.fontSize}px ${text.font}`;
+        ctx.textAlign = 'center';
+        ctx.fillStyle = text.color;
+        ctx.strokeStyle = text.strokeColor;
+        ctx.lineWidth = text.strokeWidth;
+        ctx.strokeText(text.text.toUpperCase(), x, y);
+        ctx.fillText(text.text.toUpperCase(), x, y);
+      });
+      const padding = 10;
+      ctx.font = 'bold 14px Arial';
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+      ctx.strokeStyle = 'rgba(0, 0, 0, 0.7)';
+      ctx.textAlign = 'right';
+      ctx.textBaseline = 'bottom';
+      ctx.lineWidth = 2;
+      ctx.strokeText('Made with MemeFactory', canvas.width - padding, canvas.height - padding);
+      ctx.fillText('Made with MemeFactory', canvas.width - padding, canvas.height - padding);
+      setGeneratedMeme(canvas.toDataURL('image/png'));
+    };
+    img.src = selectedTemplate.url;
+  };
+
+  const calculateImageDimensions = (width: number, height: number) => {
+    let newWidth = width;
+    let newHeight = height;
+    if (width > MAX_IMAGE_WIDTH) {
+      newWidth = MAX_IMAGE_WIDTH;
+      newHeight = (height * MAX_IMAGE_WIDTH) / width;
+    }
+    if (newHeight > MAX_IMAGE_HEIGHT) {
+      newHeight = MAX_IMAGE_HEIGHT;
+      newWidth = (width * MAX_IMAGE_HEIGHT) / height;
+    }
+    return { width: newWidth, height: newHeight };
+  };
+
+  const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!canvasRef.current) return;
+    const rect = canvasRef.current.getBoundingClientRect();
+    const x = ((e.clientX - rect.left) / rect.width) * 100;
+    const y = ((e.clientY - rect.top) / rect.height) * 100;
+    const clicked = draggableTexts.find(text => {
+      const dx = text.x - x;
+      const dy = text.y - y;
+      return Math.sqrt(dx * dx + dy * dy) < 5;
+    });
+    if (clicked) {
+      setDragState({
+        id: clicked.id,
+        startX: e.clientX,
+        startY: e.clientY,
+        initialX: clicked.x,
+        initialY: clicked.y
+      });
+      setIsDragging(true);
+    }
+  };
+
+  const throttledDrag = () => {
+    if (!isDragging || !dragState || !canvasRef.current) return;
+    const handle = (e: MouseEvent) => {
+      if (!dragState) return;
+      const rect = canvasRef.current!.getBoundingClientRect();
+      const deltaX = ((e.clientX - dragState.startX) / rect.width) * 100;
+      const deltaY = ((e.clientY - dragState.startY) / rect.height) * 100;
+      setDraggableTexts(prev =>
+        prev.map(text =>
+          text.id === dragState.id
+            ? {
+                ...text,
+                x: Math.min(100, Math.max(0, dragState.initialX + deltaX)),
+                y: Math.min(100, Math.max(0, dragState.initialY + deltaY))
+              }
+            : text
+        )
+      );
+    };
+    return handle;
+  };
+
+  useEffect(() => {
+    const moveHandler = (e: MouseEvent) => {
+      if (animationRef.current) cancelAnimationFrame(animationRef.current);
+      animationRef.current = requestAnimationFrame(() => {
+        throttledDrag()?.(e);
+      });
+    };
+
+    if (isDragging) {
+      window.addEventListener('mousemove', moveHandler);
+      window.addEventListener('mouseup', handleMouseUp);
+    } else {
+      window.removeEventListener('mousemove', moveHandler);
+      window.removeEventListener('mouseup', handleMouseUp);
+    }
+    return () => {
+      window.removeEventListener('mousemove', moveHandler);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isDragging, dragState]);
+
+  const handleMouseUp = () => {
+    if (isDragging) {
+      setIsDragging(false);
+      setDragState(null);
+      generateMeme();
+    }
+  };
+
+  const shareMeme = async () => {
+    if (!canvasRef.current) return;
+    const base64 = canvasRef.current.toDataURL('image/png');
+    const imageUrl = await uploadToImgBB(base64);
+    if (!imageUrl) return alert('❌ Upload failed. Please try again.');
+    await navigator.clipboard.writeText(imageUrl);
+    alert('✅ URL copied to clipboard:\n' + imageUrl);
+  };
+
+  const downloadMeme = () => {
+    if (!canvasRef.current) return;
+    const link = document.createElement('a');
+    link.download = 'meme.png';
+    link.href = canvasRef.current.toDataURL('image/png');
+    link.click();
+  };
+
+  const handleAiSuggestion = (suggestion: string) => {
+    if (suggestion.includes('|')) {
+      const [top, bottom] = suggestion.split('|').map(s => s.trim());
+      setTopText(top);
+      setBottomText(bottom);
+    } else {
+      setTopText(suggestion);
+    }
+  };
+
+  return (
+    <div className="bg-gray-800 rounded-lg p-6 text-white">
+      <div className="flex flex-col lg:flex-row gap-6">
+        <div className="flex-1 flex flex-col items-center">
+          <div ref={containerRef} className="relative mb-4 w-full max-w-md">
+            <canvas
+              ref={canvasRef}
+              onMouseDown={handleMouseDown}
+              className="max-w-full h-auto border border-gray-700 rounded-lg shadow-lg mx-auto cursor-move"
+            />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default MemeEditor;

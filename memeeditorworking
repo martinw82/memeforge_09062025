@@ -1,0 +1,366 @@
+// MemeEditor.tsx - Final version with full UI reintegration and dragging fix
+
+import React, { useState, useRef, useEffect } from 'react';
+import { useMeme } from '../context/MemeContext';
+import axios from 'axios';
+import { Settings, Download, Sparkles, RefreshCw, ArrowUp, Zap } from 'lucide-react';
+
+interface DraggableText {
+  id: string;
+  text: string;
+  x: number;
+  y: number;
+  type: 'top' | 'bottom' | 'custom';
+  font: string;
+  fontSize: number;
+  color: string;
+  strokeWidth: number;
+  strokeColor: string;
+}
+
+interface DragState {
+  id: string;
+  startX: number;
+  startY: number;
+  initialX: number;
+  initialY: number;
+}
+
+const MAX_IMAGE_WIDTH = 800;
+const MAX_IMAGE_HEIGHT = 800;
+
+const AVAILABLE_FONTS = [
+  { name: 'Impact', value: 'Impact' },
+  { name: 'Comic Sans MS', value: '"Comic Sans MS", cursive' },
+  { name: 'Arial Black', value: '"Arial Black", sans-serif' },
+  { name: 'Verdana Bold', value: 'Verdana, sans-serif' },
+  { name: 'Times New Roman', value: '"Times New Roman", serif' }
+];
+
+const uploadToImgBB = async (imageBase64: string): Promise<string | null> => {
+  try {
+    const response = await axios.post(
+      "https://mfimgshr.netlify.app/.netlify/functions/upload-meme",
+      { imageBase64 }
+    );
+    return response.data.url;
+  } catch (error) {
+    console.error("Image upload failed:", error);
+    return null;
+  }
+};
+
+const MemeEditor: React.FC = () => {
+  const [tone, setTone] = useState("Default");
+  const {
+    memeState,
+    setTopText,
+    setBottomText,
+    generateAiSuggestions,
+    setGeneratedMeme
+  } = useMeme();
+  const {
+    selectedTemplate,
+    topText,
+    bottomText,
+    aiSuggestions,
+    isLoading
+  } = memeState;
+
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [fontSize, setFontSize] = useState(32);
+  const [textColor, setTextColor] = useState('#ffffff');
+  const [strokeColor, setStrokeColor] = useState('#000000');
+  const [strokeWidth, setStrokeWidth] = useState(2);
+  const [selectedFont, setSelectedFont] = useState(AVAILABLE_FONTS[0].value);
+  const [draggableTexts, setDraggableTexts] = useState<DraggableText[]>([]);
+  const [dragState, setDragState] = useState<DragState | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+
+  useEffect(() => {
+    const newTexts: DraggableText[] = [];
+    if (topText) {
+      newTexts.push({
+        id: 'top', text: topText, x: 50, y: 10, type: 'top',
+        font: selectedFont, fontSize, color: textColor,
+        strokeWidth, strokeColor
+      });
+    }
+    if (bottomText) {
+      newTexts.push({
+        id: 'bottom', text: bottomText, x: 50, y: 90, type: 'bottom',
+        font: selectedFont, fontSize, color: textColor,
+        strokeWidth, strokeColor
+      });
+    }
+    setDraggableTexts(newTexts);
+  }, [topText, bottomText, selectedFont, fontSize, textColor, strokeWidth, strokeColor, selectedTemplate]);
+
+  useEffect(() => {
+    generateMeme(draggableTexts);
+  }, [draggableTexts]);
+
+  const generateMeme = (texts = draggableTexts) => {
+    if (!selectedTemplate || !canvasRef.current) return;
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      const { width, height } = calculateImageDimensions(img.width, img.height);
+      canvas.width = width;
+      canvas.height = height;
+      ctx.clearRect(0, 0, width, height);
+      ctx.drawImage(img, 0, 0, width, height);
+      texts.forEach(text => {
+        const x = (text.x / 100) * width;
+        const y = (text.y / 100) * height;
+        ctx.font = `bold ${text.fontSize}px ${text.font}`;
+        ctx.textAlign = 'center';
+        ctx.fillStyle = text.color;
+        ctx.strokeStyle = text.strokeColor;
+        ctx.lineWidth = text.strokeWidth;
+        ctx.strokeText(text.text.toUpperCase(), x, y);
+        ctx.fillText(text.text.toUpperCase(), x, y);
+      });
+      const padding = 10;
+      ctx.font = 'bold 14px Arial';
+      ctx.fillStyle = 'rgba(255,255,255,0.7)';
+      ctx.strokeStyle = 'rgba(0,0,0,0.7)';
+      ctx.textAlign = 'right';
+      ctx.textBaseline = 'bottom';
+      ctx.strokeText('Made with MemeFactory', width - padding, height - padding);
+      ctx.fillText('Made with MemeFactory', width - padding, height - padding);
+      setGeneratedMeme(canvas.toDataURL('image/png'));
+    };
+    img.src = selectedTemplate.url;
+  };
+
+  const calculateImageDimensions = (width: number, height: number) => {
+    let newWidth = width;
+    let newHeight = height;
+    if (width > MAX_IMAGE_WIDTH) {
+      newWidth = MAX_IMAGE_WIDTH;
+      newHeight = (height * MAX_IMAGE_WIDTH) / width;
+    }
+    if (newHeight > MAX_IMAGE_HEIGHT) {
+      newHeight = MAX_IMAGE_HEIGHT;
+      newWidth = (width * MAX_IMAGE_HEIGHT) / height;
+    }
+    return { width: newWidth, height: newHeight };
+  };
+
+  const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!canvasRef.current) return;
+    const rect = canvasRef.current.getBoundingClientRect();
+    const x = ((e.clientX - rect.left) / rect.width) * 100;
+    const y = ((e.clientY - rect.top) / rect.height) * 100;
+    const clicked = draggableTexts.find(text => {
+      const dx = text.x - x;
+      const dy = text.y - y;
+      return Math.sqrt(dx * dx + dy * dy) < 5;
+    });
+    if (clicked) {
+      setDragState({
+        id: clicked.id,
+        startX: e.clientX,
+        startY: e.clientY,
+        initialX: clicked.x,
+        initialY: clicked.y
+      });
+      setIsDragging(true);
+    }
+  };
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isDragging || !dragState || !canvasRef.current) return;
+      const rect = canvasRef.current.getBoundingClientRect();
+      const deltaX = ((e.clientX - dragState.startX) / rect.width) * 100;
+      const deltaY = ((e.clientY - dragState.startY) / rect.height) * 100;
+      setDraggableTexts(prev =>
+        prev.map(text =>
+          text.id === dragState.id
+            ? {
+                ...text,
+                x: Math.min(100, Math.max(0, dragState.initialX + deltaX)),
+                y: Math.min(100, Math.max(0, dragState.initialY + deltaY))
+              }
+            : text
+        )
+      );
+    };
+    const handleMouseUp = () => {
+      if (isDragging) {
+        setIsDragging(false);
+        setDragState(null);
+      }
+    };
+    if (isDragging) {
+      window.addEventListener('mousemove', handleMouseMove);
+      window.addEventListener('mouseup', handleMouseUp);
+    }
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isDragging, dragState]);
+
+  const shareMeme = async () => {
+    if (!canvasRef.current) return;
+    const base64 = canvasRef.current.toDataURL('image/png');
+    const imageUrl = await uploadToImgBB(base64);
+    if (!imageUrl) return alert('❌ Upload failed. Please try again.');
+    await navigator.clipboard.writeText(imageUrl);
+    alert('✅ URL copied to clipboard:\n' + imageUrl);
+  };
+
+  const downloadMeme = () => {
+    if (!canvasRef.current) return;
+    const link = document.createElement('a');
+    link.download = 'meme.png';
+    link.href = canvasRef.current.toDataURL('image/png');
+    link.click();
+  };
+
+  const handleAiSuggestion = (suggestion: string) => {
+    if (suggestion.includes('|')) {
+      const [top, bottom] = suggestion.split('|').map(s => s.trim());
+      setTopText(top);
+      setBottomText(bottom);
+    } else {
+      setTopText(suggestion);
+    }
+  };
+
+  return (
+    <div className="bg-gray-800 rounded-lg p-6 text-white">
+      <div className="flex flex-col lg:flex-row gap-6">
+        <div className="flex-1 flex flex-col items-center">
+          <div ref={containerRef} className="relative mb-4 w-full max-w-md">
+            <canvas
+              ref={canvasRef}
+              onMouseDown={handleMouseDown}
+              className="max-w-full h-auto border border-gray-700 rounded-lg shadow-lg mx-auto cursor-move"
+            />
+          </div>
+
+          <div className="w-full max-w-md space-y-4">
+            <input
+              type="text"
+              value={topText}
+              onChange={(e) => setTopText(e.target.value)}
+              className="w-full bg-gray-700 text-white border border-gray-600 rounded-md px-4 py-2"
+              placeholder="Top Text"
+            />
+            <input
+              type="text"
+              value={bottomText}
+              onChange={(e) => setBottomText(e.target.value)}
+              className="w-full bg-gray-700 text-white border border-gray-600 rounded-md px-4 py-2"
+              placeholder="Bottom Text"
+            />
+
+            {/* TEXT SETTINGS */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-sm">Font</label>
+                <select
+                  value={selectedFont}
+                  onChange={(e) => setSelectedFont(e.target.value)}
+                  className="w-full bg-gray-700 text-white border border-gray-600 rounded-md px-2 py-1"
+                >
+                  {AVAILABLE_FONTS.map(f => (
+                    <option key={f.value} value={f.value} style={{ fontFamily: f.value }}>{f.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="text-sm">Font Size</label>
+                <input
+                  type="range"
+                  min="12"
+                  max="72"
+                  value={fontSize}
+                  onChange={(e) => setFontSize(parseInt(e.target.value))}
+                  className="w-full"
+                />
+              </div>
+              <div>
+                <label className="text-sm">Text Color</label>
+                <input type="color" value={textColor} onChange={e => setTextColor(e.target.value)} className="w-full h-8" />
+              </div>
+              <div>
+                <label className="text-sm">Stroke Color</label>
+                <input type="color" value={strokeColor} onChange={e => setStrokeColor(e.target.value)} className="w-full h-8" />
+              </div>
+              <div>
+                <label className="text-sm">Stroke Width</label>
+                <input
+                  type="range"
+                  min="0"
+                  max="10"
+                  value={strokeWidth}
+                  onChange={(e) => setStrokeWidth(parseFloat(e.target.value))}
+                  className="w-full"
+                />
+              </div>
+            </div>
+
+            {/* AI + Buttons */}
+            <div className="flex items-center gap-2 mt-2">
+              <label className="text-sm font-medium">Tone:</label>
+              <select
+                value={tone}
+                onChange={(e) => setTone(e.target.value)}
+                className="border rounded px-2 py-1 text-sm bg-gray-700 text-white"
+              >
+                <option value="Default">Default</option>
+                <option value="Sarcastic">Sarcastic</option>
+                <option value="Wholesome">Wholesome</option>
+                <option value="Dank">Dank</option>
+                <option value="Dark">Dark</option>
+              </select>
+              <button
+                onClick={() => generateAiSuggestions(tone)}
+                disabled={isLoading}
+                className="flex items-center gap-1 bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-md"
+              >
+                {isLoading ? <RefreshCw size={16} className="animate-spin" /> : <Sparkles size={16} />}
+                {isLoading ? "Generating..." : "Get Captions"}
+              </button>
+            </div>
+
+            {aiSuggestions.length > 0 && (
+              <div className="space-y-1">
+                {aiSuggestions.map((suggestion, i) => (
+                  <div
+                    key={i}
+                    onClick={() => handleAiSuggestion(suggestion)}
+                    className="cursor-pointer p-2 bg-gray-700 hover:bg-gray-600 rounded"
+                  >
+                    {suggestion}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 gap-2 mt-4">
+              <button onClick={downloadMeme} className="bg-purple-600 hover:bg-purple-700 text-white py-2 px-4 rounded-md">
+                <Download size={18} className="inline" /> Download
+              </button>
+              <button onClick={shareMeme} className="bg-green-600 hover:bg-green-700 text-white py-2 px-4 rounded-md">
+                <Zap size={18} className="inline" /> Share
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default MemeEditor;
