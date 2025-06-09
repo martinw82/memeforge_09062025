@@ -67,9 +67,18 @@ interface Database {
           created_at: string
         }
       }
+      processed_stripe_events: { // Added interface for the new table
+        Row: {
+          event_id: string
+        }
+        Insert: {
+          event_id: string
+        }
+      }
     }
   }
 }
+
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -107,16 +116,37 @@ serve(async (req) => {
 
     console.log('Processing webhook event:', event.type)
 
+    // Check if the event has already been processed
+    const { data: processedEvent, error: fetchError } = await supabaseClient
+      .from('processed_stripe_events')
+      .select('event_id')
+      .eq('event_id', event.id)
+      .single();
+
+    if (fetchError && fetchError.code !== 'PGRST116') { // PGRST116 means no rows found
+      console.error('Error checking processed events:', fetchError);
+      throw fetchError; // Re-throw to indicate a problem
+    }
+
+    if (processedEvent) {
+      console.log('Event already processed:', event.id);
+      return new Response(JSON.stringify({ received: true, message: 'Event already processed' }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 200,
+      });
+    }
+
+
     // Handle different event types
     switch (event.type) {
       case 'checkout.session.completed': {
         const session = event.data.object as Stripe.Checkout.Session
-        
+
         if (session.mode === 'subscription') {
           // Get subscription details
           const subscription = await stripe.subscriptions.retrieve(session.subscription as string)
           const customer = await stripe.customers.retrieve(session.customer as string)
-          
+
           // Extract user ID from metadata
           const userId = session.metadata?.user_id
           if (!userId) {
@@ -155,6 +185,18 @@ serve(async (req) => {
             console.error('Error creating subscription:', error)
           } else {
             console.log('Subscription created successfully for user:', userId)
+
+            // Insert processed event ID
+            const { error: insertError } = await supabaseClient
+              .from('processed_stripe_events')
+              .insert({ event_id: event.id });
+
+            if (insertError) {
+              console.error('Error inserting processed event ID:', insertError);
+              // You might want to handle this error more robustly, e.g., with retries
+            } else {
+              console.log('Processed event ID inserted:', event.id);
+            }
           }
         }
         break
@@ -162,7 +204,7 @@ serve(async (req) => {
 
       case 'customer.subscription.updated': {
         const subscription = event.data.object as Stripe.Subscription
-        
+
         // Update subscription record
         const { error } = await supabaseClient
           .from('subscriptions')
@@ -179,13 +221,25 @@ serve(async (req) => {
           console.error('Error updating subscription:', error)
         } else {
           console.log('Subscription updated successfully:', subscription.id)
+
+          // Insert processed event ID
+          const { error: insertError } = await supabaseClient
+            .from('processed_stripe_events')
+            .insert({ event_id: event.id });
+
+          if (insertError) {
+            console.error('Error inserting processed event ID:', insertError);
+            // You might want to handle this error more robustly, e.g., with retries
+          } else {
+            console.log('Processed event ID inserted:', event.id);
+          }
         }
         break
       }
 
       case 'customer.subscription.deleted': {
         const subscription = event.data.object as Stripe.Subscription
-        
+
         // Mark subscription as canceled
         const { error } = await supabaseClient
           .from('subscriptions')
@@ -199,13 +253,25 @@ serve(async (req) => {
           console.error('Error canceling subscription:', error)
         } else {
           console.log('Subscription canceled successfully:', subscription.id)
+
+          // Insert processed event ID
+          const { error: insertError } = await supabaseClient
+            .from('processed_stripe_events')
+            .insert({ event_id: event.id });
+
+          if (insertError) {
+            console.error('Error inserting processed event ID:', insertError);
+            // You might want to handle this error more robustly, e.g., with retries
+          } else {
+            console.log('Processed event ID inserted:', event.id);
+          }
         }
         break
       }
 
       case 'invoice.payment_failed': {
         const invoice = event.data.object as Stripe.Invoice
-        
+
         if (invoice.subscription) {
           // Mark subscription as past due
           const { error } = await supabaseClient
@@ -220,6 +286,18 @@ serve(async (req) => {
             console.error('Error updating subscription to past_due:', error)
           } else {
             console.log('Subscription marked as past_due:', invoice.subscription)
+
+            // Insert processed event ID
+            const { error: insertError } = await supabaseClient
+              .from('processed_stripe_events')
+              .insert({ event_id: event.id });
+
+            if (insertError) {
+              console.error('Error inserting processed event ID:', insertError);
+              // You might want to handle this error more robustly, e.g., with retries
+            } else {
+              console.log('Processed event ID inserted:', event.id);
+            }
           }
         }
         break
@@ -227,7 +305,7 @@ serve(async (req) => {
 
       case 'invoice.payment_succeeded': {
         const invoice = event.data.object as Stripe.Invoice
-        
+
         if (invoice.subscription) {
           // Mark subscription as active
           const { error } = await supabaseClient
@@ -242,6 +320,18 @@ serve(async (req) => {
             console.error('Error updating subscription to active:', error)
           } else {
             console.log('Subscription marked as active:', invoice.subscription)
+
+            // Insert processed event ID
+            const { error: insertError } = await supabaseClient
+              .from('processed_stripe_events')
+              .insert({ event_id: event.id });
+
+            if (insertError) {
+              console.error('Error inserting processed event ID:', insertError);
+              // You might want to handle this error more robustly, e.g., with retries
+            } else {
+              console.log('Processed event ID inserted:', event.id);
+            }
           }
         }
         break
