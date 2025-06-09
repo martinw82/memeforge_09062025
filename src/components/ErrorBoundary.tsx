@@ -1,6 +1,7 @@
 import React, { Component, ReactNode } from 'react';
 import { trackError } from '../utils/analytics';
 import { AlertCircle, RefreshCw, Home, Bug } from 'lucide-react';
+import * as Sentry from '@sentry/react';
 
 interface Props {
   children: ReactNode;
@@ -59,11 +60,9 @@ class ErrorBoundary extends Component<Props, State> {
 
     // Report to external error monitoring service
     if (import.meta.env.VITE_SENTRY_DSN) {
-      // Would integrate with Sentry or similar service
-      console.log('Would report to Sentry:', {
-        error,
-        errorInfo,
-        errorId: this.state.errorId,
+      Sentry.captureException(error, {
+        extra: { ...errorInfo, errorId: this.state.errorId },
+        tags: { componentStack: errorInfo.componentStack ? 'available' : 'unavailable' },
       });
     }
   }
