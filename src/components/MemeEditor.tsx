@@ -21,6 +21,7 @@ import {
   Lock
 } from 'lucide-react';
 import PremiumFeatures from './PremiumFeatures';
+// import { supabaseHelpers } from '../utils/supabase'; // Already imported
 
 interface DraggableText {
   id: string;
@@ -80,22 +81,7 @@ const WATERMARK_SIZES: { label: string; value: WatermarkSize; pixels: number }[]
   { label: 'Large', value: 'large', pixels: 80 },
 ];
 
-const uploadToImgBB = async (imageBase64: string): Promise<string | null> => {
-  try {
-    const base64Only = imageBase64.split(',')[1];
-    const response = await axios.post(
-      "https://mfimgshr.netlify.app/.netlify/functions/upload-meme",
-      { imageBase64: base64Only },
-      { headers: { 'Content-Type': 'application/json' } }
-    );
-
-    console.log("Upload successful. Image URL:", response.data?.url);
-    return response.data.url;
-  } catch (error: any) {
-    console.error("Image upload failed:", error.response?.data || error.message);
-    return null;
-  }
-};
+// Removed uploadToImgBB function
 
 const MemeEditor: React.FC = () => {
   const [tone, setTone] = useState("Default");
@@ -536,25 +522,27 @@ const MemeEditor: React.FC = () => {
     try {
       const quality = isPremium && features.high_res_download ? 1.0 : 0.8;
       const base64 = canvasRef.current.toDataURL('image/png', quality);
-      const imageUrl = await measurePerformance('meme_upload', async () => {
-        return await uploadToImgBB(base64);
+
+      const uniqueFileName = `meme-${Date.now()}.png`;
+      const imageUrl = await measurePerformance('meme_upload_supabase', async () => {
+        return await supabaseHelpers.uploadImageToSupabase(base64, uniqueFileName);
       });
       
       if (!imageUrl) {
-        await trackEvent('meme_shared', { share_method: 'upload_failed' });
+        await trackEvent('meme_shared', { share_method: 'supabase_upload_failed' });
         alert('❌ Upload failed. Please try again.');
         return;
       }
       
       await navigator.clipboard.writeText(imageUrl);
       await trackEvent('meme_shared', { 
-        share_method: 'clipboard',
+        share_method: 'supabase_clipboard', // Updated share_method
         is_premium: isPremium,
         quality: quality === 1.0 ? 'high' : 'standard',
       });
       alert('✅ URL copied to clipboard:\n' + imageUrl);
     } catch (error) {
-      await trackEvent('meme_shared', { share_method: 'error' });
+      await trackEvent('meme_shared', { share_method: 'supabase_error' });
       console.error('Share error:', error);
     }
   };

@@ -394,4 +394,51 @@ export const supabaseHelpers = {
 
     return { data, error };
   },
+
+  async uploadImageToSupabase(base64Image: string, fileName: string): Promise<string | null> {
+    try {
+      const byteCharacters = atob(base64Image.split(',')[1]);
+      const byteNumbers = new Array(byteCharacters.length);
+      for (let i = 0; i < byteCharacters.length; i++) {
+        byteNumbers[i] = byteCharacters.charCodeAt(i);
+      }
+      const byteArray = new Uint8Array(byteNumbers);
+      const blob = new Blob([byteArray], { type: 'image/png' });
+      const file = new File([blob], fileName, { type: 'image/png' });
+
+      const filePath = `public/${Date.now()}-${fileName}`; // Ensure 'public/' path for public access if bucket is not entirely public
+
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('memes') // Assuming 'memes' bucket
+        .upload(filePath, file, {
+          cacheControl: '3600',
+          upsert: false, // true if you want to overwrite, false to throw error if file exists
+        });
+
+      if (uploadError) {
+        console.error('Error uploading image to Supabase Storage:', uploadError);
+        return null;
+      }
+
+      const { data: publicUrlData } = supabase.storage
+        .from('memes')
+        .getPublicUrl(uploadData.path);
+
+      if (!publicUrlData || !publicUrlData.publicUrl) {
+           console.error('Error getting public URL from Supabase Storage.');
+           // Attempt to construct URL manually if path is available, common for public buckets
+           // This might be needed if the bucket is public and getPublicUrl doesn't behave as expected for some policies
+           const directUrl = `${supabaseUrl}/storage/v1/object/public/memes/${uploadData.path}`;
+           console.log('Attempting direct URL construction: ', directUrl);
+           return directUrl;
+      }
+
+      console.log('Supabase image upload successful. Public URL:', publicUrlData.publicUrl);
+      return publicUrlData.publicUrl;
+
+    } catch (error) {
+      console.error('Exception in uploadImageToSupabase:', error);
+      return null;
+    }
+  },
 };

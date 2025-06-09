@@ -1,4 +1,5 @@
 import { analytics, trackError, trackPerformance } from './analytics';
+import * as Sentry from '@sentry/react';
 
 interface PerformanceMetrics {
   name: string;
@@ -223,6 +224,13 @@ class ProductionMonitoring {
 
   private reportError(errorReport: ErrorReport) {
     this.errorReports.push(errorReport);
+
+    if (import.meta.env.VITE_SENTRY_DSN) {
+      Sentry.captureException(new Error(errorReport.message), {
+        extra: errorReport,
+        tags: { errorSource: 'globalErrorHandler' }
+      });
+    }
     
     // Track in analytics
     trackError(new Error(errorReport.message), {

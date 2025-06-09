@@ -1,9 +1,21 @@
-import { defineConfig } from 'vite';
+import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
+import { sentryVitePlugin } from "@sentry/vite-plugin";
 
 // https://vitejs.dev/config/
-export default defineConfig({
-  plugins: [react()],
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), '');
+  return {
+    plugins: [
+      react(),
+      // Add Sentry plugin last
+      sentryVitePlugin({
+        org: env.SENTRY_ORG,
+        project: env.SENTRY_PROJECT,
+        authToken: env.SENTRY_AUTH_TOKEN,
+        telemetry: false, // Disable telemetry
+      }),
+    ],
   
   // Production optimizations
   build: {
@@ -120,4 +132,4 @@ export default defineConfig({
     // Remove debugger and console in production
     drop: process.env.NODE_ENV === 'production' ? ['console', 'debugger'] : [],
   },
-});
+}});
