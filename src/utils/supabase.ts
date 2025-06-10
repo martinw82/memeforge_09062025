@@ -441,4 +441,98 @@ export const supabaseHelpers = {
       return null;
     }
   },
+
+  async getPerformanceMetrics(filters: { eventName?: string; startDate?: string; endDate?: string; limit?: number } = {}) {
+    try {
+       let query = supabase
+           .from('events')
+           .select("event_name, properties, timestamp") // Select the whole properties column
+           .like('event_name', filters.eventName || 'performance_metric%')
+           .order('timestamp', { ascending: false })
+           .limit(filters.limit || 25);
+
+       if (filters.startDate) {
+           query = query.gte('timestamp', filters.startDate);
+       }
+       if (filters.endDate) {
+           query = query.lte('timestamp', filters.endDate);
+       }
+
+       const { data, error } = await query;
+
+       if (error) {
+           console.error('Error fetching performance metrics:', error);
+           return { data: null, error };
+       }
+
+       // Process data to extract metric_value and ensure it's a number
+       const processedData = data?.map(d => {
+           const rawValue = d.properties?.metric_value;
+           let metricValueNumber: number | null = null;
+           if (typeof rawValue === 'number') {
+               metricValueNumber = rawValue;
+           } else if (typeof rawValue === 'string') {
+               metricValueNumber = parseFloat(rawValue);
+               if (isNaN(metricValueNumber)) {
+                   metricValueNumber = null; // Set to null if parsing fails
+               }
+           }
+
+           return {
+               event_name: d.event_name,
+               // Ensure metric_value is consistently a number or null
+               metric_value: metricValueNumber,
+               timestamp: d.timestamp
+           };
+       }).filter(d => d.metric_value !== null && d.metric_value !== undefined); // Filter out entries where metric_value is null or undefined
+
+       return { data: processedData, error: null };
+
+    } catch (e) {
+       console.error('Exception in getPerformanceMetrics:', e);
+       return { data: null, error: e instanceof Error ? e : new Error('Unknown error occurred') };
+    }
+  },
+
+  async getErrorEvents(filters: { startDate?: string; endDate?: string; limit?: number } = {}) {
+    try {
+      let query = supabase
+        .from('events')
+        .select("properties, timestamp, user_id, session_id") // Select properties, timestamp, user_id, session_id
+        .eq('event_name', 'error_occurred')
+        .order('timestamp', { ascending: false })
+        .limit(filters.limit || 25);
+
+      if (filters.startDate) {
+        query = query.gte('timestamp', filters.startDate);
+      }
+      if (filters.endDate) {
+        query = query.lte('timestamp', filters.endDate);
+      }
+
+      const { data, error } = await query;
+
+      if (error) {
+        console.error('Error fetching error events:', error);
+        return { data: null, error };
+      }
+
+      // Process data to extract relevant fields from properties
+      const processedData = data?.map(d => ({
+          error_message: d.properties?.error_message || d.properties?.message || 'No message', // Check both error_message and message
+          component: d.properties?.component || 'Unknown',
+          stack_trace: d.properties?.stack, // Include stack if available
+          additional_info: d.properties?.additional, // Include additional info
+          error_id: d.properties?.errorId, // For error boundary errors
+          timestamp: d.timestamp,
+          user_id: d.user_id,
+          session_id: d.session_id
+      }));
+
+      return { data: processedData, error: null };
+    } catch (e) {
+      console.error('Exception in getErrorEvents:', e);
+      return { data: null, error: e instanceof Error ? e : new Error('Unknown error occurred') };
+    }
+  },
 };
