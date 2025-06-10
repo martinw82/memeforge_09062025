@@ -4,6 +4,22 @@ import WalletConnect from '@walletconnect/client';
 import QRCodeModal from '@walletconnect/qrcode-modal';
 import { Wallet, CheckCircle, AlertCircle, RefreshCw, Star, Info } from 'lucide-react';
 
+// Mock implementation for useWalletClient
+const useWalletClient = () => {
+  // console.warn('Using mock useWalletClient. For full functionality, integrate with a real wallet client provider.');
+  return {
+    walletClient: null, // Or a mock client object if specific properties are accessed
+    // Example:
+    // walletClient: {
+    //   isConnected: false,
+    //   connect: async () => console.log('Mock connect called'),
+    //   disconnect: async () => console.log('Mock disconnect called'),
+    //   getAddress: async () => null,
+    //   // Add other methods/properties if they are accessed by the component
+    // },
+  };
+};
+
 interface AlgorandWalletSelectorProps {
   onConnect: (address: string, walletType: string) => void;
   onError: (error: string) => void;
